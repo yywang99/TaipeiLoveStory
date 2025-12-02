@@ -24,6 +24,7 @@ export interface Character {
   secret?: string;
   bio?: string; // Generated summary
   portraitUrl?: string; // User uploaded or AI generated portrait URL
+  affinity?: number; // 0-100, individual relationship score
 }
 
 export interface StoryTurn {
@@ -43,10 +44,14 @@ export interface StoryTurn {
   phaseLabel: string; // e.g., "Act I: The Meeting", "Act II: Jealousy"
   emotionalStatus: string; // e.g., "Strangers", "Awkward Tension", "Passionate"
   
-  affinityChange: number; // The impact of the last choice on the relationship (-10 to +10)
+  // Multi-character affinity updates
+  affinityUpdates: { target: string; change: number }[]; // target: "Heroine" or NPC Name
   
   // Visual Token for deterministic scene management
   visualToken: string; // e.g., "OFFICE_NIGHT", "PARK_DAY". Only changes when scene physically changes.
+  
+  soundKeyword?: string;
+  sceneChanged?: boolean; // Explicit flag from AI to trigger scene regeneration
 }
 
 export interface GameState {
@@ -56,7 +61,7 @@ export interface GameState {
   currentTurn: StoryTurn | null;
   history: { role: string; content: string }[];
   status: 'IDLE' | 'GENERATING_CHARACTERS' | 'PLAYING' | 'ENDING';
-  affinity: number; // 0-100
+  affinity: number; // 0-100, MAIN HEROINE affinity (kept for easy access)
   model: string;
   summary: string; // The condensed "Story So Far"
   turnCount: number; // Tracks the pacing
@@ -68,4 +73,7 @@ export interface GameState {
   // Global Background State (Persists across GameScreen remounts)
   currentBgImage: string;
   currentBgToken: string;
+  
+  // Settings persistence
+  fontScale: number;
 }

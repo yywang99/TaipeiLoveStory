@@ -1,7 +1,9 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { Character, StoryTurn } from '../types';
-import { Heart, MapPin, Clock, Users, X, Settings2, MessageSquarePlus, Loader2, BookOpen, Download, Activity, Film, GripHorizontal, Sparkles, Check, Type, Upload, Camera, Image as ImageIcon, RotateCcw } from 'lucide-react';
+import { Heart, MapPin, Clock, Users, X, Settings2, MessageSquarePlus, Loader2, BookOpen, Download, Activity, Film, GripHorizontal, Sparkles, Check, Type, Upload, Camera, Image as ImageIcon, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import { generateSceneImage, generateCharacterPortrait } from '../services/geminiService';
+import { AMBIENT_SOUNDS } from '../constants';
 
 interface Props {
   turn: StoryTurn;
@@ -22,6 +24,10 @@ interface Props {
   savedBgImage: string;
   savedBgToken: string;
   onBackgroundUpdate: (url: string, token: string) => void;
+  
+  // Font Scale Props
+  fontScale: number;
+  onFontScaleChange: (scale: number) => void;
 }
 
 const GameScreen: React.FC<Props> = ({ 
@@ -40,7 +46,9 @@ const GameScreen: React.FC<Props> = ({
   sceneAlbum,
   savedBgImage,
   savedBgToken,
-  onBackgroundUpdate
+  onBackgroundUpdate,
+  fontScale,
+  onFontScaleChange
 }) => {
   const [displayedText, setDisplayedText] = useState('');
   const [showChoices, setShowChoices] = useState(false);
@@ -50,7 +58,9 @@ const GameScreen: React.FC<Props> = ({
   const [isTypingDone, setIsTypingDone] = useState(false);
   const [galleryTab, setGalleryTab] = useState<'heroine' | 'scene'>('heroine');
   
-  const [fontScale, setFontScale] = useState(0);
+  // Audio State
+  const [isMuted, setIsMuted] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   
   // Background State: Initialize with the saved global state OR placeholder
   const [currentBg, setCurrentBg] = useState<string>(
@@ -104,8 +114,73 @@ const GameScreen: React.FC<Props> = ({
   };
 
   const toggleFontSize = () => {
-    setFontScale(prev => (prev + 1) % 3);
+    onFontScaleChange((fontScale + 1) % 3);
   };
+  
+  // Audio Logic
+  useEffect(() => {
+    // If no sound keyword is provided, or explicitly null, stop audio
+    if (!turn.soundKeyword) {
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+        }
+        return;
+    }
+    
+    // Safety check for sound URL
+    const soundUrl = AMBIENT_SOUNDS[turn.soundKeyword as keyof typeof AMBIENT_SOUNDS];
+    
+    // If we have a keyword but no URL mapped, stop audio
+    if (!soundUrl) {
+         if (audioRef.current) {
+            audioRef.current.pause();
+        }
+        return;
+    }
+    
+    // Initialize audio object if needed
+    if (!audioRef.current) {
+        audioRef.current = new Audio(soundUrl);
+        audioRef.current.loop = true;
+        audioRef.current.volume = 0.3; // Low ambient volume
+    }
+
+    // Check if source needs to change
+    if (audioRef.current.src !== soundUrl) {
+         audioRef.current.src = soundUrl;
+         if (!isMuted) {
+             const playPromise = audioRef.current.play();
+             if (playPromise !== undefined) {
+               playPromise.catch(error => {
+                 console.log("Auto-play was prevented. Interaction required.", error);
+               });
+             }
+         }
+    } else {
+        // Same source, ensure playing if not muted
+        if (audioRef.current.paused && !isMuted) {
+             const playPromise = audioRef.current.play();
+             if (playPromise !== undefined) {
+               playPromise.catch(() => {});
+             }
+        }
+    }
+    
+    // Mute handling
+    audioRef.current.muted = isMuted;
+
+  }, [turn.soundKeyword, isMuted]);
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current = null;
+        }
+    };
+  }, []);
 
   // --- Image Generation Logic using Visual Tokens ---
   useEffect(() => {
@@ -114,7 +189,7 @@ const GameScreen: React.FC<Props> = ({
     // DETERMINISTIC CHECK:
     // Only generate if the AI-provided visualToken differs from what we currently have saved.
     // If savedBgToken is empty, it's the first run, so generate.
-    if (turn.visualToken === savedBgToken) {
+    if (turn.visualToken === savedBgToken && !turn.sceneChanged) {
         // Token matches, no visual change needed.
         // Ensure currentBg is consistent with savedBgImage (handles remounts)
         if (savedBgImage && currentBg !== savedBgImage) {
@@ -192,7 +267,7 @@ const GameScreen: React.FC<Props> = ({
     fetchData();
 
     return () => { isMounted = false; };
-  }, [turn.visualToken, savedBgToken]); // Only depend on tokens
+  }, [turn.visualToken, savedBgToken, turn.sceneChanged]);
 
   useEffect(() => {
     if (nextBg) {
@@ -431,6 +506,9 @@ const GameScreen: React.FC<Props> = ({
                 </div>
 
                 <div className="flex items-center gap-1">
+                    <button onClick={() => setIsMuted(!isMuted)} className="p-1.5 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-all" title={isMuted ? "Unmute" : "Mute"}>
+                         {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                    </button>
                     <button onClick={toggleFontSize} className="p-1.5 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-all" title="Font Size">
                         <Type className="w-4 h-4" />
                     </button>
@@ -538,7 +616,7 @@ const GameScreen: React.FC<Props> = ({
                 
                 {!isCustomInputMode ? (
                   <div className="grid gap-2">
-                    {turn.choices.map((choice, idx) => (
+                    {turn.choices?.map((choice, idx) => (
                       <button
                         key={idx}
                         disabled={isGenerating}
@@ -640,8 +718,7 @@ const GameScreen: React.FC<Props> = ({
                         <div 
                            key={idx} 
                            onClick={() => handleSelectFromGallery(url, galleryTab)}
-                           className="group relative aspect-[3/4] (galleryTab==='scene'?'aspect-video':'aspect-[3/4]') overflow-hidden rounded-lg cursor-pointer border border-white/5 hover:border-pink-500/50 transition-all"
-                           style={{ aspectRatio: galleryTab === 'scene' ? '16/9' : '3/4' }}
+                           className={`group relative overflow-hidden rounded-lg cursor-pointer border border-white/5 hover:border-pink-500/50 transition-all ${galleryTab === 'scene' ? 'aspect-video' : 'aspect-[3/4]'}`}
                         >
                             <img src={url} alt="Gallery" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -774,12 +851,19 @@ const GameScreen: React.FC<Props> = ({
 
               {npcs.length > 0 && (
                 <div className="space-y-4 pt-6 border-t border-slate-700">
-                  <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Supporting Cast</h3>
+                  <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Supporting Cast (Rivals)</h3>
                   <div className="grid gap-4">
                     {npcs.map((npc, idx) => (
                       <div key={idx} className="bg-slate-800/50 p-4 rounded-lg border border-white/5 flex flex-col gap-2">
                         <div className="flex items-center justify-between">
                           <span className="font-bold text-gray-200">{npc.name}</span>
+                          <span className="text-xs text-indigo-300">{npc.affinity || 0}% Affinity</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden mt-1 mb-2">
+                           <div 
+                             className="h-full bg-indigo-500 transition-all duration-700"
+                             style={{ width: `${npc.affinity || 0}%` }}
+                           ></div>
                         </div>
                         <p className="text-sm text-gray-400 leading-relaxed">
                           {npc.bio || 'No details available.'}

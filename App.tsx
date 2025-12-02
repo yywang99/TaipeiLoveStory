@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import StartScreen from './components/StartScreen';
 import GameScreen from './components/GameScreen';
@@ -20,13 +21,18 @@ const App: React.FC = () => {
     heroineAlbum: [],
     sceneAlbum: [],
     currentBgImage: '', // Initialize empty
-    currentBgToken: '' // Initialize empty
+    currentBgToken: '', // Initialize empty
+    fontScale: 0
   });
 
   const [loadingText, setLoadingText] = useState('Initializing...');
 
   const handleModelChange = (model: string) => {
     setGameState(prev => ({ ...prev, model }));
+  };
+  
+  const handleFontScaleChange = (scale: number) => {
+    setGameState(prev => ({ ...prev, fontScale: scale }));
   };
 
   const handlePortraitUpdate = (url: string) => {
@@ -91,7 +97,11 @@ const App: React.FC = () => {
         const json = JSON.parse(event.target?.result as string);
         // Basic validation checking for essential fields
         if (json.heroine && json.history && json.status) {
-          setGameState(json);
+          setGameState(prev => ({
+            ...prev,
+            ...json,
+            fontScale: json.fontScale !== undefined ? json.fontScale : 0
+          }));
         } else {
           alert("Invalid save file structure.");
         }
@@ -112,10 +122,15 @@ const App: React.FC = () => {
     try {
       const { heroine, npcs } = await generateCharacters(scenario, gameState.model);
       
+      // Initialize Affinities
+      heroine.affinity = 40;
+      // Defensive check if npcs is undefined
+      const initializedNpcs = (npcs || []).map(npc => ({ ...npc, affinity: 20 }));
+
       setGameState(prev => ({
         ...prev,
         heroine,
-        npcs,
+        npcs: initializedNpcs,
         status: 'PLAYING',
         summary: `The story begins in Taipei with ${heroine.name}, a ${heroine.archetype}.`,
         turnCount: 0,
@@ -123,10 +138,11 @@ const App: React.FC = () => {
         heroineAlbum: [], 
         sceneAlbum: [],
         currentBgImage: '', // Reset bg on new game
-        currentBgToken: ''
+        currentBgToken: '',
+        fontScale: 0
       }));
 
-      await startStory(scenario, heroine, npcs);
+      await startStory(scenario, heroine, initializedNpcs);
 
     } catch (error) {
       console.error("Failed to generate characters", error);
@@ -189,17 +205,38 @@ const App: React.FC = () => {
         gameState.currentBgToken // Pass the persistent token for consistency
       );
 
-      const affinityChange = nextTurn.affinityChange || 0;
-      const newAffinity = Math.min(100, Math.max(0, gameState.affinity + affinityChange));
+      // Process Affinity Updates
+      let newMainAffinity = gameState.affinity;
+      let newHeroineData = { ...gameState.heroine };
+      const newNpcs = gameState.npcs.map(n => ({ ...n }));
+
+      if (nextTurn.affinityUpdates) {
+        nextTurn.affinityUpdates.forEach(update => {
+          if (update.target === 'Heroine' || update.target === newHeroineData.name) {
+            const currentVal = newHeroineData.affinity || 0;
+            newHeroineData.affinity = Math.min(100, Math.max(0, currentVal + update.change));
+            newMainAffinity = newHeroineData.affinity;
+          } else {
+            // Check NPCs
+            const npcIndex = newNpcs.findIndex(n => n.name === update.target);
+            if (npcIndex !== -1) {
+               const currentNpcVal = newNpcs[npcIndex].affinity || 0;
+               newNpcs[npcIndex].affinity = Math.min(100, Math.max(0, currentNpcVal + update.change));
+            }
+          }
+        });
+      }
 
       setGameState(prev => ({
         ...prev,
+        heroine: newHeroineData,
+        npcs: newNpcs,
         history: [...newHistory, { role: 'model', content: JSON.stringify(nextTurn) }],
         currentTurn: nextTurn,
         status: 'PLAYING',
         summary: nextTurn.newSummary,
         turnCount: prev.turnCount + 1,
-        affinity: newAffinity
+        affinity: newMainAffinity
       }));
 
     } catch (error) {
@@ -242,6 +279,9 @@ const App: React.FC = () => {
           savedBgImage={gameState.currentBgImage}
           savedBgToken={gameState.currentBgToken}
           onBackgroundUpdate={handleBackgroundUpdate}
+          
+          fontScale={gameState.fontScale}
+          onFontScaleChange={handleFontScaleChange}
         />
       )}
     </div>

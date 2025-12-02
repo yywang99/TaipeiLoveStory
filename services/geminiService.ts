@@ -76,10 +76,25 @@ const storyTurnSchema: Schema = {
     newSummary: { type: Type.STRING, description: "A concise summary (max 100 words) of the 'Story So Far', updated with the events of THIS turn." },
     phaseLabel: { type: Type.STRING, description: "Current Story Act (e.g., 'Act 1: The Encounter', 'Act 2: The Rival', 'Act 3: The Decision')." },
     emotionalStatus: { type: Type.STRING, description: "Short description of the relationship status (e.g., 'Awkward Strangers', 'Secretly Dating', 'Cold War')." },
-    affinityChange: { type: Type.INTEGER, description: "Integer value (-15 to +15) representing how much the Heroine liked the player's last action." },
-    visualToken: { type: Type.STRING, description: "A unique identifier string for the current scene visuals (e.g., 'OFFICE_NIGHT_RAIN', 'PARK_DAY'). IMPORTANT: This MUST remain identical to the previous turn's token unless the scene physically changes." }
+    
+    affinityUpdates: { 
+      type: Type.ARRAY, 
+      description: "List of affinity changes for characters involved.",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          target: { type: Type.STRING, description: "Name of the character (e.g. 'Heroine' or NPC Name)." },
+          change: { type: Type.INTEGER, description: "Integer value (-15 to +15)." }
+        },
+        required: ["target", "change"]
+      }
+    },
+
+    visualToken: { type: Type.STRING, description: "A unique identifier string for the current scene visuals (e.g., 'OFFICE_NIGHT_RAIN', 'PARK_DAY'). IMPORTANT: This MUST remain identical to the previous turn's token unless the scene physically changes." },
+    sceneChanged: { type: Type.BOOLEAN, description: "Set to TRUE only if the location or time has significantly changed, requiring a new background image." },
+    soundKeyword: { type: Type.STRING, description: "One of: RAIN, CAFE, OFFICE, MRT, NIGHT_MARKET, PARK. Or null if no specific sound." }
   },
-  required: ["narrative", "dialogue", "speaker", "choices", "location", "time", "backgroundKeyword", "newSummary", "phaseLabel", "emotionalStatus", "affinityChange", "visualToken"]
+  required: ["narrative", "dialogue", "speaker", "choices", "location", "time", "backgroundKeyword", "newSummary", "phaseLabel", "emotionalStatus", "affinityUpdates", "visualToken", "sceneChanged"]
 };
 
 // --- API Functions ---
@@ -105,7 +120,7 @@ export const generateCharacters = async (scenario: ScenarioType, model: string):
   });
 
   const json = JSON.parse(response.text || "{}");
-  return { heroine: json.heroine, npcs: json.npcs };
+  return { heroine: json.heroine, npcs: json.npcs || [] };
 };
 
 export const generateStoryTurn = async (
@@ -120,7 +135,7 @@ export const generateStoryTurn = async (
   previousVisualToken?: string
 ): Promise<StoryTurn> => {
 
-  const npcContext = npcs.map(n => `- Side Heroine (Rival): ${n.name}, Bio: ${n.bio}`).join('\n');
+  const npcContext = (npcs || []).map(n => `- Side Heroine (Rival): ${n.name}, Bio: ${n.bio}`).join('\n');
   
   // Strict Pacing Logic (The Director)
   let pacingInstruction = "";
@@ -159,8 +174,10 @@ export const generateStoryTurn = async (
     Initialize the 'newSummary' with the premise of this meeting.
     Set 'phaseLabel' to 'Act I: The Encounter'.
     Set 'emotionalStatus' to 'Strangers'.
-    Set 'affinityChange' to 0.
-    ${visualTokenInstruction}`;
+    Set 'affinityUpdates' to [{ "target": "Heroine", "change": 0 }].
+    ${visualTokenInstruction}
+    Select a 'soundKeyword' appropriate for the opening scene (RAIN, CAFE, OFFICE, MRT, NIGHT_MARKET, PARK) or null.
+    Set 'sceneChanged' to true (start of game).`;
   } else {
     userPrompt = `Player chose: "${lastChoice}".
     
@@ -178,11 +195,16 @@ export const generateStoryTurn = async (
 
     Instructions:
     1. Continue the narrative based on the choice and the Context.
-    2. Evaluate the player's choice: Did it please the Main Heroine? Did it cause jealousy? Calculate 'affinityChange'.
+    2. Evaluate the player's choice against ALL characters.
+       - Did it please the Main Heroine?
+       - Did it favor a Rival NPC? If so, INCREASE the Rival's affinity and DECREASE the Main Heroine's affinity (Jealousy).
+       - Populate 'affinityUpdates' accordingly. Target name must match Heroine or NPC names exactly.
     3. Advance the plot.
     4. Generate a 'phaseLabel' and 'emotionalStatus'.
     5. CRITICAL: Update 'newSummary'.
-    6. MANDATORY: Provide a 'dialogue' line (spoken or internal) that reacts to the player's choice.`;
+    6. MANDATORY: Provide a 'dialogue' line (spoken or internal) that reacts to the player's choice.
+    7. Select a 'soundKeyword' that matches the location/mood (RAIN, CAFE, OFFICE, MRT, NIGHT_MARKET, PARK) or null.
+    8. Set 'sceneChanged' to true ONLY if location or time changed significantly.`;
   }
 
   // Construct history for context
@@ -206,6 +228,10 @@ export const generateStoryTurn = async (
   });
 
   const json = JSON.parse(response.text || "{}");
+  // Safety defaults
+  if (!json.choices) json.choices = [];
+  if (!json.affinityUpdates) json.affinityUpdates = [];
+  
   return json as StoryTurn;
 };
 

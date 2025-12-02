@@ -33,3 +33,12 @@ Rules:
 
 The output must be structured JSON.
 `;
+
+export const AMBIENT_SOUNDS = {
+  RAIN: "https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg",
+  CAFE: "https://actions.google.com/sounds/v1/ambiences/coffee_shop.ogg",
+  OFFICE: "https://actions.google.com/sounds/v1/office/typing_on_Keyboard.ogg",
+  MRT: "https://actions.google.com/sounds/v1/ambiences/subway_station_nyc.ogg",
+  NIGHT_MARKET: "https://actions.google.com/sounds/v1/ambiences/outdoor_event_background_noise.ogg",
+  PARK: "https://actions.google.com/sounds/v1/ambiences/spring_day_forest.ogg"
+};
