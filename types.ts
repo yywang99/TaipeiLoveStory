@@ -49,9 +49,8 @@ export interface StoryTurn {
   
   // Visual Token for deterministic scene management
   visualToken: string; // e.g., "OFFICE_NIGHT", "PARK_DAY". Only changes when scene physically changes.
-  
-  soundKeyword?: string;
   sceneChanged?: boolean; // Explicit flag from AI to trigger scene regeneration
+  soundKeyword?: string;
 }
 
 export interface GameState {
@@ -76,4 +75,5 @@ export interface GameState {
   
   // Settings persistence
   fontScale: number;
+  isMuted: boolean;
 }

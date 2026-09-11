@@ -3,8 +3,23 @@ import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { Character, ScenarioType, StoryTurn } from "../types";
 import { SYSTEM_INSTRUCTION_CORE } from "../constants";
 
-// Initialize AI Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to safely obtain GoogleGenAI client
+const getAiClient = () => {
+  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing Gemini API Key. Please set GEMINI_API_KEY in your .env.local file.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
+// Helper to safely parse JSON text from AI response (stripping markdown backticks if present)
+const parseJsonResponse = <T>(text: string): T => {
+  let cleaned = text.trim();
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  }
+  return JSON.parse(cleaned) as T;
+};
 
 // --- Schemas ---
 
@@ -100,6 +115,7 @@ const storyTurnSchema: Schema = {
 // --- API Functions ---
 
 export const generateCharacters = async (scenario: ScenarioType, model: string): Promise<{ heroine: Character, npcs: Character[] }> => {
+  const ai = getAiClient();
   const prompt = `Generate a cast for a "${scenario}" romance visual novel set in Taipei.
   Context keywords: ${scenario === ScenarioType.OFFICE ? 'Xinyi District, Elite, Secret, Overtime, Alcohol, Taipei 101' : 'National Taiwan University, Library, Bicycles, Night Market, First Love, Gongguan'}.
   
@@ -119,7 +135,7 @@ export const generateCharacters = async (scenario: ScenarioType, model: string):
     }
   });
 
-  const json = JSON.parse(response.text || "{}");
+  const json = parseJsonResponse<{ heroine: Character, npcs: Character[] }>(response.text || "{}");
   return { heroine: json.heroine, npcs: json.npcs || [] };
 };
 
@@ -135,6 +151,7 @@ export const generateStoryTurn = async (
   previousVisualToken?: string
 ): Promise<StoryTurn> => {
 
+  const ai = getAiClient();
   const npcContext = (npcs || []).map(n => `- Side Heroine (Rival): ${n.name}, Bio: ${n.bio}`).join('\n');
   
   // Strict Pacing Logic (The Director)
@@ -227,38 +244,36 @@ export const generateStoryTurn = async (
     }
   });
 
-  const json = JSON.parse(response.text || "{}");
+  const json = parseJsonResponse<StoryTurn>(response.text || "{}");
   // Safety defaults
   if (!json.choices) json.choices = [];
   if (!json.affinityUpdates) json.affinityUpdates = [];
   
-  return json as StoryTurn;
+  return json;
 };
 
 export const generateSceneImage = async (location: string, time: string, mood: string, keyword: string): Promise<string | null> => {
   try {
+    const ai = getAiClient();
     const imagePrompt = `Anime visual novel background art, high quality, Makoto Shinkai style, digital painting, 4k. 
     Scene: ${location} in Taipei. 
     Time: ${time}. 
     Atmosphere: ${mood}. 
     Details: ${keyword}, detailed scenery, no characters, cinematic lighting.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [{ text: imagePrompt }]
-      },
+    const response = await ai.models.generateImages({
+      model: 'imagen-3.0-generate-002',
+      prompt: imagePrompt,
       config: {
-        imageConfig: {
-          aspectRatio: "16:9"
-        }
+        numberOfImages: 1,
+        aspectRatio: "16:9",
+        outputMimeType: "image/jpeg"
       }
     });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-      }
+    const base64Bytes = response.generatedImages?.[0]?.image?.imageBytes;
+    if (base64Bytes) {
+      return `data:image/jpeg;base64,${base64Bytes}`;
     }
     return null;
   } catch (e) {
@@ -273,52 +288,28 @@ export const generateCharacterPortrait = async (
   context?: string
 ): Promise<string | null> => {
   try {
+    const ai = getAiClient();
     const description = `Hair: ${appearance.hair}, Eyes: ${appearance.eyes}, Clothing: ${appearance.clothing_style}, Feature: ${appearance.distinctive_feature}`;
     
-    let promptText = `(Masterpiece, Photorealistic, 8k), Portrait of a beautiful Taiwanese woman.
-    Character Description: ${description}.
-    detailed skin texture, cinematic lighting, depth of field, shot on Sony A7R IV, 85mm lens, looking at camera.`;
+    let promptText = `Anime style portrait of a beautiful Taiwanese woman. Character Description: ${description}. Detailed skin texture, anime art, clear facial features.`;
 
     if (context) {
-      promptText += `\nCurrent Scenario Context: ${context}. Adapt the lighting and atmosphere to match this context while keeping the character focus.`;
+      promptText += `\nCurrent Scenario Context: ${context}. Adapt the lighting and atmosphere to match.`;
     }
 
-    if (previousImage) {
-      promptText += `\nINSTRUCTION: A reference image of the character is provided. You MUST maintain the facial features, hairstyle, and identity of the person in the reference image exactly. Only update the lighting, pose, and background to match the new context.`;
-    } else {
-      promptText += `\nNatural expression, bokeh background of Taipei street.`;
-    }
-
-    const parts: any[] = [{ text: promptText }];
-
-    if (previousImage) {
-      const matches = previousImage.match(/^data:(.+);base64,(.+)$/);
-      if (matches && matches[2]) {
-        parts.push({
-          inlineData: {
-            mimeType: matches[1],
-            data: matches[2]
-          }
-        });
-      }
-    }
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: parts
-      },
+    const response = await ai.models.generateImages({
+      model: 'imagen-3.0-generate-002',
+      prompt: promptText,
       config: {
-        imageConfig: {
-          aspectRatio: "3:4" 
-        }
+        numberOfImages: 1,
+        aspectRatio: "3:4",
+        outputMimeType: "image/jpeg"
       }
     });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-      }
+    const base64Bytes = response.generatedImages?.[0]?.image?.imageBytes;
+    if (base64Bytes) {
+      return `data:image/jpeg;base64,${base64Bytes}`;
     }
     return null;
   } catch (e) {
@@ -326,3 +317,4 @@ export const generateCharacterPortrait = async (
     return null;
   }
 };
+

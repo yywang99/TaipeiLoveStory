@@ -22,7 +22,8 @@ const App: React.FC = () => {
     sceneAlbum: [],
     currentBgImage: '', // Initialize empty
     currentBgToken: '', // Initialize empty
-    fontScale: 0
+    fontScale: 0,
+    isMuted: false
   });
 
   const [loadingText, setLoadingText] = useState('Initializing...');
@@ -33,6 +34,10 @@ const App: React.FC = () => {
   
   const handleFontScaleChange = (scale: number) => {
     setGameState(prev => ({ ...prev, fontScale: scale }));
+  };
+
+  const handleMuteToggle = () => {
+    setGameState(prev => ({ ...prev, isMuted: !prev.isMuted }));
   };
 
   const handlePortraitUpdate = (url: string) => {
@@ -100,7 +105,8 @@ const App: React.FC = () => {
           setGameState(prev => ({
             ...prev,
             ...json,
-            fontScale: json.fontScale !== undefined ? json.fontScale : 0
+            fontScale: json.fontScale !== undefined ? json.fontScale : 0,
+            isMuted: json.isMuted !== undefined ? json.isMuted : false
           }));
         } else {
           alert("Invalid save file structure.");
@@ -144,9 +150,9 @@ const App: React.FC = () => {
 
       await startStory(scenario, heroine, initializedNpcs);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to generate characters", error);
-      alert("AI Service overloaded or model unavailable. Please refresh or try a different model.");
+      alert(`AI Service Error: ${error.message || "Model unavailable or API Key invalid. Please check your settings."}`);
       setGameState(prev => ({ ...prev, status: 'IDLE' }));
     }
   };
@@ -176,8 +182,10 @@ const App: React.FC = () => {
         turnCount: 1
         // Background token will be updated by GameScreen upon first generation
       }));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to start story", error);
+      alert(`Failed to start story: ${error.message || "AI model error"}`);
+      setGameState(prev => ({ ...prev, status: 'IDLE' }));
     }
   };
 
@@ -239,8 +247,9 @@ const App: React.FC = () => {
         affinity: newMainAffinity
       }));
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error progressing story", error);
+      alert(`Story progression error: ${error.message || "Failed to generate next scene"}`);
       setGameState(prev => ({ ...prev, status: 'PLAYING' })); 
     }
   };
@@ -282,6 +291,9 @@ const App: React.FC = () => {
           
           fontScale={gameState.fontScale}
           onFontScaleChange={handleFontScaleChange}
+          
+          isMuted={gameState.isMuted}
+          onMuteToggle={handleMuteToggle}
         />
       )}
     </div>

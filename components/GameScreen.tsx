@@ -28,6 +28,10 @@ interface Props {
   // Font Scale Props
   fontScale: number;
   onFontScaleChange: (scale: number) => void;
+  
+  // Audio Props
+  isMuted: boolean;
+  onMuteToggle: () => void;
 }
 
 const GameScreen: React.FC<Props> = ({ 
@@ -48,7 +52,9 @@ const GameScreen: React.FC<Props> = ({
   savedBgToken,
   onBackgroundUpdate,
   fontScale,
-  onFontScaleChange
+  onFontScaleChange,
+  isMuted,
+  onMuteToggle
 }) => {
   const [displayedText, setDisplayedText] = useState('');
   const [showChoices, setShowChoices] = useState(false);
@@ -58,8 +64,6 @@ const GameScreen: React.FC<Props> = ({
   const [isTypingDone, setIsTypingDone] = useState(false);
   const [galleryTab, setGalleryTab] = useState<'heroine' | 'scene'>('heroine');
   
-  // Audio State
-  const [isMuted, setIsMuted] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
   // Background State: Initialize with the saved global state OR placeholder
@@ -487,9 +491,9 @@ const GameScreen: React.FC<Props> = ({
                         onChange={(e) => onModelChange(e.target.value)}
                         className="bg-transparent text-gray-300 text-xs py-1 pl-8 pr-2 outline-none cursor-pointer hover:text-white transition-colors appearance-none"
                      >
-                        <option value="gemini-2.5-flash">Flash</option>
-                        <option value="gemini-2.5-pro">Pro</option>
-                        <option value="gemini-3-pro-preview">3.0</option>
+                        <option value="gemini-2.5-flash">2.5 Flash</option>
+                        <option value="gemini-2.5-pro">2.5 Pro</option>
+                        <option value="gemini-3-pro-preview">3.0 Pro</option>
                      </select>
                 </div>
                 <div className="md:hidden relative border-r border-white/10 pr-2 mr-2">
@@ -499,14 +503,14 @@ const GameScreen: React.FC<Props> = ({
                         onChange={(e) => onModelChange(e.target.value)}
                         className="absolute inset-0 opacity-0 cursor-pointer"
                      >
-                        <option value="gemini-2.5-flash">Flash</option>
-                        <option value="gemini-2.5-pro">Pro</option>
-                        <option value="gemini-3-pro-preview">3.0</option>
+                        <option value="gemini-2.5-flash">2.5 Flash</option>
+                        <option value="gemini-2.5-pro">2.5 Pro</option>
+                        <option value="gemini-3-pro-preview">3.0 Pro</option>
                      </select>
                 </div>
 
                 <div className="flex items-center gap-1">
-                    <button onClick={() => setIsMuted(!isMuted)} className="p-1.5 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-all" title={isMuted ? "Unmute" : "Mute"}>
+                    <button onClick={onMuteToggle} className="p-1.5 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-all" title={isMuted ? "Unmute" : "Mute"}>
                          {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                     </button>
                     <button onClick={toggleFontSize} className="p-1.5 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-all" title="Font Size">
